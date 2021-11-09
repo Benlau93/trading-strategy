@@ -82,6 +82,8 @@ class BackTesting:
                 buy_signal = self.strategy.buy(df.iloc[:i,:])
                 if buy_signal[0]:
                     num_shares = int((self.strategy.position_sizing() * capital) // buy_signal[1])
+                    if num_shares <= 0: # invalid trade if capital not enough to purchase additional stocks
+                        continue
                     buy_value = (num_shares * buy_signal[1]) + fees
                     capital -= buy_value
                     position = {"TICKER":ticker,
@@ -100,21 +102,24 @@ class BackTesting:
         # compare
         print("\n")
         print("----- Result -----")
-        closed = self.get_closed_position()
-        closed = closed[closed["TICKER"]==ticker].copy()
-        pl = closed["P/L"].sum()
-        if position:
-            pl += ((df.sort_values("Date").tail(1)["Close"].iloc[0] * position["NumShares"]) - position["BuyValue"])
-        pl = round(pl,2)
-        pl_per = round(pl / original_capital * 100,2)
-        print(f"Trading Strategy: Total Profit of ${pl} ({pl_per}%) with {trade} closed position(s)")
+        if len(self.transaction) < 1:
+            print("No transaction based on current trading strategy.")
+        else:
+            closed = self.get_closed_position()
+            closed = closed[closed["TICKER"]==ticker].copy()
+            pl = closed["P/L"].sum()
+            if position:
+                pl += ((df.sort_values("Date").tail(1)["Close"].iloc[0] * position["NumShares"]) - position["BuyValue"])
+            pl = round(pl,2)
+            pl_per = round(pl / original_capital * 100,2)
+            print(f"Trading Strategy: Total Profit of ${pl} ({pl_per}%) with {trade} closed position(s)")
 
-        if buy_and_hold:
-            bnh = self.buy_and_hold(df)
-            bnh_pl = round(bnh[1] / 100 * original_capital,2)
-            print(f"Buy and Hold: Total Profit of ${bnh_pl} ({bnh[1]}%)")
-            better_strategy = self.strategy.__class__.__name__ if pl > bnh_pl else "Buy and Hold"
-            print(f"{better_strategy} is a better strategy") 
+            if buy_and_hold:
+                bnh = self.buy_and_hold(df)
+                bnh_pl = round(bnh[1] / 100 * original_capital,2)
+                print(f"Buy and Hold: Total Profit of ${bnh_pl} ({bnh[1]}%)")
+                better_strategy = self.strategy.__class__.__name__ if pl > bnh_pl else "Buy and Hold"
+                print(f"{better_strategy} is a better strategy") 
 
     @staticmethod
     def download_price(ticker ,timeframe, start_date, end_date):
@@ -151,6 +156,9 @@ class BackTesting:
 
     @classmethod
     def get_closed_position(cls):
+        # validate
+        if len(cls.transaction) < 1:
+            raise Exception("There is no result to export")
         buy_df = cls.transaction[cls.transaction["Action"]=="Buy"].rename({"Price":"BuyPrice",
                                                                     "Date":"BuyDate",
                                                                     "Value":"BuyValue"}, axis=1).drop("Action", axis=1)

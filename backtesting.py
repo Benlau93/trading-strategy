@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 from tradingstrategy import TradingStrategy
 import yfinance as yf
-from dateutil.relativedelta import relativedelta
 from datetime import date
 from datetime import datetime
 from dateutil import parser
@@ -46,9 +45,13 @@ class BackTesting:
         return self.__strategy
 
 
-    def backtesting(self, buy_and_hold: bool, verbose = True):
+    def backtesting(self, timeframe = "1d" ,buy_and_hold = False, verbose = True):
+        # validation
+        if timeframe not in ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"]:
+            raise ValueError("Only timeframe allowed are 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo")
+
         # download historical price
-        df = self.download_price()
+        df = self.download_price(timeframe)
         df = df.sort_index().reset_index()
 
         # iterate through each timeframe
@@ -107,7 +110,7 @@ class BackTesting:
             better_strategy = self.strategy.__class__.__name__ if pl > bnh_pl else "Buy and Hold"
             print(f"{better_strategy} is a better strategy") 
 
-    def download_price(self):
+    def download_price(self, timeframe):
         if self.tickers.endswith(".txt"):
             # read from text file
             with open(self.tickers,"r") as f:
@@ -116,7 +119,7 @@ class BackTesting:
             tickers = self.tickers.upper()
 
         # download historical price using yfinance
-        historical = yf.download(tickers, start=self.start_date, end=self.end_date,interval=self.strategy.timeframe, auto_adjust=True)
+        historical = yf.download(tickers, start=self.start_date, end=self.end_date,interval=timeframe, auto_adjust=True)
         if "Adj Close" in historical.columns.tolist():
             historical["Close"] = historical["Adj Close"]
 

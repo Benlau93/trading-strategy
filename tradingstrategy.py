@@ -5,20 +5,12 @@ import numpy as np
 class TradingStrategy:
     position_size = 0.3
 
-    def __init__(self, timeframe="1d", chart="OHLC",buy_window = 2, sell_window = 2):
-        # validation
-        if timeframe not in ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"]:
-            raise ValueError("Only timeframe allowed are 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo")
+    def __init__(self, chart="OHLC"):
         if chart not in ["OHLC","line"]:
             raise ValueError("Only charts allowed are OHLC,line")
 
         # initiation
-        self.__timeframe = timeframe
         self.__chart = chart
-
-    @property
-    def timeframe(self):
-        return self.__timeframe
 
     @property
     def chart(self):
@@ -69,7 +61,7 @@ class TradingStrategy:
         return self.position_size
 
     def __repr__(self):
-        return f"{self.__class__.__name__}('{self.timeframe}', {self.buy_window}, {self.sell_window})"
+        return f"{self.__class__.__name__}('{self.__chart}')"
 
     def __name__(self):
         return "TradingStrategy"

@@ -11,40 +11,34 @@ import os
 class BackTesting:
     transaction = pd.DataFrame()
 
-    def __init__(self, strategy, start_date: str, end_date: str ,capital = 10000, fees = 0):
+    def __init__(self, strategy):
         # validation
         if strategy.__name__() != "TradingStrategy":
             raise ValueError("Only class of TradingStrategy is accepted for backtesting")
-        if capital < 0:
-            raise ValueError("Capital cannot be less than 0")
-        if fees < 0:
-            raise ValueError("Fees cannot be less than 0")
-
-        # validate date
-        try:
-            start_date = parser.parse(start_date).date()
-            end_date = parser.parse(end_date).date()
-        except:
-            raise ValueError("Start or End date is not a valid date format")
-
 
         # initiation
         self.__strategy = strategy
-        self.start_date = start_date
-        self.end_date = end_date
-        self.__original_capital = capital
-        self.__capital = capital
-        self.__fees = fees
 
     @property
     def strategy(self):
         return self.__strategy
 
 
-    def backtesting(self, ticker :str ,timeframe = "1d" ,buy_and_hold = False, verbose = True):
+    def backtesting(self, ticker :str, start_date: str, end_date: str, timeframe = "1d" , capital = 10000, fees = 0, buy_and_hold = False, verbose = True):
         # validation
         if timeframe not in ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"]:
             raise ValueError("Only timeframe allowed are 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo")
+        # validate date
+        try:
+            start_date = parser.parse(start_date).date()
+            end_date = parser.parse(end_date).date()
+        except:
+            raise ValueError("Start or End date is not a valid date format")
+        if capital < 0:
+            raise ValueError("Capital cannot be less than 0")
+        if fees < 0:
+            raise ValueError("Fees cannot be less than 0")
+        
         # get ticker
         if ticker.endswith(".txt"):
             # read from text file
@@ -56,9 +50,12 @@ class BackTesting:
         # initaite trade
         trade = 0
         position = {}
+        original_capital = capital
 
         # download historical price
-        df = self.download_price(ticker ,timeframe)
+        df = self.download_price(ticker ,timeframe, start_date, end_date)
+        if self.strategy.chart == "line":
+            df = df[["Close"]].copy()
         df = df.sort_index().reset_index()
 
         # iterate through each timeframe
@@ -66,8 +63,8 @@ class BackTesting:
             if position:
                 sell_signal = self.strategy.sell(df.iloc[:i,:])
                 if sell_signal[0]:
-                    sell_value = (position["NumShares"] * sell_signal[1]) - self.__fees
-                    self.__capital += sell_value
+                    sell_value = (position["NumShares"] * sell_signal[1]) - fees
+                    capital += sell_value
                     closed_dict = {"SellDate":sell_signal[2],
                                     "SellPrice":sell_signal[1],
                                     "SellValue":sell_value}
@@ -84,9 +81,9 @@ class BackTesting:
             else:
                 buy_signal = self.strategy.buy(df.iloc[:i,:])
                 if buy_signal[0]:
-                    num_shares = int((self.strategy.position_sizing() * self.__capital) // buy_signal[1])
-                    buy_value = (num_shares * buy_signal[1]) + self.__fees
-                    self.__capital -= buy_value
+                    num_shares = int((self.strategy.position_sizing() * capital) // buy_signal[1])
+                    buy_value = (num_shares * buy_signal[1]) + fees
+                    capital -= buy_value
                     position = {"TICKER":ticker,
                                         "BuyPrice":buy_signal[1],
                                         "NumShares":num_shares,
@@ -104,33 +101,32 @@ class BackTesting:
         print("\n")
         print("----- Result -----")
         closed = self.get_closed_position()
+        closed = closed[closed["TICKER"]==ticker].copy()
         pl = closed["P/L"].sum()
         if position:
             pl += ((df.sort_values("Date").tail(1)["Close"].iloc[0] * position["NumShares"]) - position["BuyValue"])
         pl = round(pl,2)
-        pl_per = round(pl / self.__original_capital * 100,2)
+        pl_per = round(pl / original_capital * 100,2)
         print(f"Trading Strategy: Total Profit of ${pl} ({pl_per}%) with {trade} closed position(s)")
 
         if buy_and_hold:
             bnh = self.buy_and_hold(df)
-            bnh_pl = round(bnh[1] / 100 * self.__original_capital,2)
+            bnh_pl = round(bnh[1] / 100 * original_capital,2)
             print(f"Buy and Hold: Total Profit of ${bnh_pl} ({bnh[1]}%)")
             better_strategy = self.strategy.__class__.__name__ if pl > bnh_pl else "Buy and Hold"
             print(f"{better_strategy} is a better strategy") 
 
-    def download_price(self, ticker ,timeframe):
+    @staticmethod
+    def download_price(ticker ,timeframe, start_date, end_date):
         # download historical price using yfinance
-        historical = yf.download(ticker, start=self.start_date, end=self.end_date,interval=timeframe, auto_adjust=True)
+        historical = yf.download(ticker, start=start_date, end=end_date, interval=timeframe, auto_adjust=True)
         if "Adj Close" in historical.columns.tolist():
             historical["Close"] = historical["Adj Close"]
 
-        if self.strategy.chart == "OHLC":
-            return historical[["Open","High","Low","Close"]]
-        else:
-            return historical[["Close"]]
+        return historical[["Open","High","Low","Close"]]
     
-    @classmethod
-    def buy_and_hold(self, df):
+    @staticmethod
+    def buy_and_hold(df):
         buy_price = df.sort_values("Date").head(1)["Close"].iloc[0]
         cur_price = df.sort_values("Date").tail(1)["Close"].iloc[0]
         pl = round(cur_price - buy_price, 2)

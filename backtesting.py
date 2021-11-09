@@ -1,4 +1,3 @@
-from multiprocessing import Value
 import pandas as pd
 import numpy as np
 from tradingstrategy import TradingStrategy
@@ -12,12 +11,12 @@ import os
 class BackTesting:
     transaction = pd.DataFrame()
 
-    def __init__(self, strategy, tickers: str, start_date: str, end_date: str ,capital = 10000, fees = 0):
+    def __init__(self, strategy, start_date: str, end_date: str ,capital = 10000, fees = 0):
         # validation
         if strategy.__name__() != "TradingStrategy":
             raise ValueError("Only class of TradingStrategy is accepted for backtesting")
-        if not isinstance(tickers, str):
-            raise TypeError("Tickers should be given in str")
+        if capital < 0:
+            raise ValueError("Capital cannot be less than 0")
         if fees < 0:
             raise ValueError("Fees cannot be less than 0")
 
@@ -31,7 +30,6 @@ class BackTesting:
 
         # initiation
         self.__strategy = strategy
-        self.tickers = tickers
         self.start_date = start_date
         self.end_date = end_date
         self.__original_capital = capital
@@ -45,13 +43,13 @@ class BackTesting:
         return self.__strategy
 
 
-    def backtesting(self, timeframe = "1d" ,buy_and_hold = False, verbose = True):
+    def backtesting(self, ticker :str ,timeframe = "1d" ,buy_and_hold = False, verbose = True):
         # validation
         if timeframe not in ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"]:
             raise ValueError("Only timeframe allowed are 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo")
 
         # download historical price
-        df = self.download_price(timeframe)
+        df = self.download_price(ticker ,timeframe)
         df = df.sort_index().reset_index()
 
         # iterate through each timeframe
@@ -110,16 +108,16 @@ class BackTesting:
             better_strategy = self.strategy.__class__.__name__ if pl > bnh_pl else "Buy and Hold"
             print(f"{better_strategy} is a better strategy") 
 
-    def download_price(self, timeframe):
-        if self.tickers.endswith(".txt"):
+    def download_price(self, ticker ,timeframe):
+        if ticker.endswith(".txt"):
             # read from text file
-            with open(self.tickers,"r") as f:
-                tickers = f.read()
+            with open(ticker,"r") as f:
+                ticker = f.read()
         else:
-            tickers = self.tickers.upper()
+            ticker = ticker.upper()
 
         # download historical price using yfinance
-        historical = yf.download(tickers, start=self.start_date, end=self.end_date,interval=timeframe, auto_adjust=True)
+        historical = yf.download(ticker, start=self.start_date, end=self.end_date,interval=timeframe, auto_adjust=True)
         if "Adj Close" in historical.columns.tolist():
             historical["Close"] = historical["Adj Close"]
 

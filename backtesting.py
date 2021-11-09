@@ -1,3 +1,4 @@
+from multiprocessing import Value
 import pandas as pd
 import numpy as np
 from tradingstrategy import TradingStrategy
@@ -5,27 +6,35 @@ import yfinance as yf
 from dateutil.relativedelta import relativedelta
 from datetime import date
 from datetime import datetime
+from dateutil import parser
 import xlsxwriter
 import os
 
 class BackTesting:
     transaction = pd.DataFrame()
 
-    def __init__(self, strategy, tickers: str, test_years = 1 ,capital = 10000, fees = 0):
+    def __init__(self, strategy, tickers: str, start_date: str, end_date: str ,capital = 10000, fees = 0):
         # validation
         if strategy.__name__() != "TradingStrategy":
             raise ValueError("Only class of TradingStrategy is accepted for backtesting")
         if not isinstance(tickers, str):
             raise TypeError("Tickers should be given in str")
-        if not isinstance(test_years, int):
-            raise TypeError("Testing years should be given in int")
         if fees < 0:
             raise ValueError("Fees cannot be less than 0")
 
+        # validate date
+        try:
+            start_date = parser.parse(start_date).date()
+            end_date = parser.parse(end_date).date()
+        except:
+            raise ValueError("Start or End date is not a valid date format")
+
+
         # initiation
         self.__strategy = strategy
-        self.__tickers = tickers
-        self.__test_year = test_years
+        self.tickers = tickers
+        self.start_date = start_date
+        self.end_date = end_date
         self.__original_capital = capital
         self.__capital = capital
         self.__fees = fees
@@ -35,19 +44,11 @@ class BackTesting:
     @property
     def strategy(self):
         return self.__strategy
-    
-    @property
-    def tickers(self):
-        return self.__tickers
-
-    @property
-    def test_year(self):
-        return self.__test_year
 
 
     def backtesting(self, buy_and_hold: bool, verbose = True):
         # download historical price
-        df = self.__download_price()
+        df = self.download_price()
         df = df.sort_index().reset_index()
 
         # iterate through each timeframe
@@ -64,7 +65,7 @@ class BackTesting:
                     # update trade
                     self.__trade += 1
                     # record transaction
-                    self.append_transaction(self.__position)
+                    self.__append_transaction(self.__position)
                     # remove position
                     self.__position = {}
                     # verbose
@@ -82,7 +83,7 @@ class BackTesting:
                                         "BuyDate":buy_signal[2],
                                         "Trade":self.__trade}
                     # record transactions
-                    self.append_transaction(self.__position)
+                    self.__append_transaction(self.__position)
 
                     # verbose
                     if verbose:
@@ -106,7 +107,7 @@ class BackTesting:
             better_strategy = self.strategy.__class__.__name__ if pl > bnh_pl else "Buy and Hold"
             print(f"{better_strategy} is a better strategy") 
 
-    def __download_price(self):
+    def download_price(self):
         if self.tickers.endswith(".txt"):
             # read from text file
             with open(self.tickers,"r") as f:
@@ -115,9 +116,7 @@ class BackTesting:
             tickers = self.tickers.upper()
 
         # download historical price using yfinance
-        end = date.today()
-        start = date.today() - relativedelta(years=self.test_year)
-        historical = yf.download(tickers, start=start, end=end,interval=self.strategy.timeframe, auto_adjust=True)
+        historical = yf.download(tickers, start=self.start_date, end=self.end_date,interval=self.strategy.timeframe, auto_adjust=True)
         if "Adj Close" in historical.columns.tolist():
             historical["Close"] = historical["Adj Close"]
 
@@ -135,7 +134,7 @@ class BackTesting:
         return (pl, pl_per)
 
     @classmethod
-    def append_transaction(cls, position):
+    def __append_transaction(cls, position):
         # append transaction
         position = pd.Series(position)
         if "SellPrice" in position.index:
@@ -193,4 +192,3 @@ class BackTesting:
             with pd.ExcelWriter(filename, date_format="YYYY-MM-DD") as writer:
                 transaction_write.to_excel(writer, sheet_name = "Transaction", index=False)
                 closed.to_excel(writer, sheet_name="Closed Position", index=False)
-            

@@ -56,7 +56,7 @@ class BackTesting:
         df = self.download_price(ticker ,timeframe, start_date, end_date)
         if self.strategy.chart == "line":
             df = df[["Close"]].copy()
-        df = df.sort_index().reset_index()
+        df = df.sort_index().dropna().reset_index()
 
         # iterate through each timeframe
         for i in range(1,len(df)+1):
@@ -77,7 +77,7 @@ class BackTesting:
                     position = {}
                     # verbose
                     if verbose:
-                        print(f"Sold {num_shares} of {ticker} shares at ${round(sell_signal[1])} on {str(sell_signal[2])[:10]}")
+                        print(f"Sold {num_shares} of {ticker} shares at ${round(sell_signal[1],2)} on {str(sell_signal[2])[:10]}")
             else:
                 buy_signal = self.strategy.buy(df.iloc[:i,:])
                 if buy_signal[0]:
@@ -97,7 +97,7 @@ class BackTesting:
 
                     # verbose
                     if verbose:
-                        print(f"Bought {num_shares} of {ticker} shares at ${round(buy_signal[1])} on {str(buy_signal[2])[:10]}")
+                        print(f"Bought {num_shares} of {ticker} shares at ${round(buy_signal[1],2)} on {str(buy_signal[2])[:10]}")
 
         # compare
         print("\n")

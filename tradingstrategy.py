@@ -56,12 +56,13 @@ class SimpleMovingAverage(TradingStrategy):
         baseline strategy -> Buy when above 9 SMA
         '''
         # check if dataframe is big enough to construct 9 SMA
-        if len(df) < 10:
+        size = self.window + 1
+        if len(df) < size:
             return (False, 0)
 
         else:
             df = df.sort_values(["Date"])
-            signal_price = df[-10:-1].rolling(9).mean()["Close"].iloc[-1]
+            signal_price = df[-size:-1].rolling(9).mean()["Close"].iloc[-1]
             # check if current price exceed signal_price
             signal = True if df["High"].iloc[-1] > signal_price else False
             signal_date = df["Date"].iloc[-1]
@@ -75,12 +76,13 @@ class SimpleMovingAverage(TradingStrategy):
         Return Tuple of (bool, float)
         baseline strategy -> sell when below 9 SMA
         '''
-        if len(df) < 10:
+        size = self.window + 1
+        if len(df) < size:
             return (False, 0)
 
         else:
             df = df.sort_values(["Date"])
-            signal_price = df[-10:-1].rolling(9).mean()["Close"].iloc[-1]
+            signal_price = df[-size:-1].rolling(9).mean()["Close"].iloc[-1]
             # check if current price below signal_price
             signal = True if df["Low"].iloc[-1] < signal_price else False
             signal_date = df["Date"].iloc[-1]

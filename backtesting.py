@@ -29,7 +29,7 @@ class BackTesting:
         return self.__strategy
 
 
-    def backtesting(self, ticker :str, start_date: str, end_date: str, timeframe = "1d" , capital = 10000, fees = 0, buy_and_hold = False, verbose = True):
+    def backtesting(self, ticker :str, start_date: str, end_date: str, timeframe = "1d" , capital = 10000, fees = 0, buy_and_hold = False,append = True, verbose = True):
         # validation
         if timeframe not in ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"]:
             raise ValueError("Only timeframe allowed are 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo")
@@ -43,7 +43,7 @@ class BackTesting:
             raise ValueError("Capital cannot be less than 0")
         if fees < 0:
             raise ValueError("Fees cannot be less than 0")
-        
+
         # get ticker
         if ticker.endswith(".txt"):
             # read from text file
@@ -52,52 +52,54 @@ class BackTesting:
         else:
             ticker = ticker.upper()
 
+        # get unique identifier of current backtesting
+        unique = self.strategy.__repr__() + "|" + ticker + "|" + str(start_date) + " to " + str(end_date) + ", " + timeframe
+
         # initaite capital
         original_capital = capital
 
         # download historical price
         df = self.download_price(ticker ,timeframe, start_date, end_date)
-        if self.strategy.chart == "line":
-            df = df[["Close"]].copy()
         df = df.sort_index().dropna().reset_index()
 
         # get signal based on trading strategy and append to transaction
-        self.__get_trading_signal(ticker, df, capital, fees, verbose)
+        self.__get_trading_signal(unique, ticker, df, capital, fees, append, verbose)
 
         # generate result
-        result = self.__generate_result(ticker, df, original_capital, buy_and_hold)
-
+        result = self.__generate_result(unique, ticker, df, original_capital, buy_and_hold)
+        result = result[result["UNIQUE"]==unique].drop("UNIQUE", axis=1).reset_index(drop=True)
         return result
 
 
-    def __generate_result(self, ticker, df, original_capital, buy_and_hold):
+    def __generate_result(self, unique, ticker, df, original_capital, buy_and_hold):
         print()
         print(f"----- {ticker} Result -----")
         if len(self.transaction) < 1:
             print("No transaction based on current trading strategy.")
         else:
             closed = self.get_closed_position()
-            closed = closed[closed["TICKER"]==ticker].copy()
+            closed = closed[closed["UNIQUE"]==unique].copy()
             pl = closed["P/L"].sum()
             pl = round(pl,2)
             pl_per = round(pl / original_capital * 100,2)
-            print(f"Trading Strategy: Total Profit of ${pl} ({pl_per}%) with {len(closed)} closed position(s)")
+            print(f"{self.strategy.__repr__()}: Total Profit of ${pl} ({pl_per}%) with {len(closed)} closed position(s)")
 
             if buy_and_hold:
                 bnh = self.buy_and_hold(df)
                 bnh_pl = round(bnh[1] / 100 * original_capital,2)
                 print(f"Buy and Hold: Total Profit of ${bnh_pl} ({bnh[1]}%)")
-                better_strategy = self.strategy.__class__.__name__ if pl > bnh_pl else "Buy and Hold"
+                better_strategy = self.strategy.__repr__() if pl > bnh_pl else "Buy and Hold"
                 print(f"{better_strategy} is a better strategy")
         return closed
 
 
-    def __get_trading_signal(self, ticker, df, capital, fees, verbose):
+    def __get_trading_signal(self,unique, ticker, df, capital, fees, append, verbose):
         # initaite trade
         trade = 0
         position = {}
-        print()
-        print(f"----- {ticker} Transaction(s) -----")
+        if verbose:
+            print()
+            print(f"----- {ticker} Transaction(s) -----")
         for i in range(1,len(df)+1):
             if position:
                 sell_signal = self.strategy.sell(df.iloc[:i,:])
@@ -111,7 +113,8 @@ class BackTesting:
                     # update trade
                     trade += 1
                     # record transaction
-                    self.__append_transaction(position)
+                    if append:
+                        self.__append_transaction(position)
                     # remove position
                     position = {}
                     # verbose
@@ -125,14 +128,15 @@ class BackTesting:
                         continue
                     buy_value = (num_shares * buy_signal[1]) + fees
                     capital -= buy_value
-                    position = {"TICKER":ticker,
-                                        "BuyPrice":buy_signal[1],
-                                        "NumShares":num_shares,
-                                        "BuyValue":buy_value,
-                                        "BuyDate":buy_signal[2],
-                                        "Trade":trade}
+                    position = {"UNIQUE":unique,
+                                "BuyPrice":buy_signal[1],
+                                "NumShares":num_shares,
+                                "BuyValue":buy_value,
+                                "BuyDate":buy_signal[2],
+                                "Trade":trade}
                     # record transactions
-                    self.__append_transaction(position)
+                    if append:
+                        self.__append_transaction(position)
 
                     # verbose
                     if verbose:
@@ -149,7 +153,8 @@ class BackTesting:
             # update trade
             trade += 1
             # record transaction
-            self.__append_transaction(position)
+            if append:
+                self.__append_transaction(position)
 
 
     @staticmethod
@@ -186,6 +191,7 @@ class BackTesting:
                                         "SellDate":"Date"})
         
         cls.transaction = cls.transaction.append(position, sort=True, ignore_index=True)
+        cls.transaction = cls.transaction.drop_duplicates(subset=["UNIQUE","Date","Action"])
 
 
     @classmethod
@@ -193,6 +199,7 @@ class BackTesting:
         # validate
         if len(cls.transaction) < 1:
             raise Exception("There is no result to export")
+        cls.transaction["Date"] = pd.to_datetime(cls.transaction["Date"], format="%Y-%m-%d")
         buy_df = cls.transaction[cls.transaction["Action"]=="Buy"].rename({"Price":"BuyPrice",
                                                                     "Date":"BuyDate",
                                                                     "Value":"BuyValue"}, axis=1).drop("Action", axis=1)
@@ -200,7 +207,8 @@ class BackTesting:
                                                                             "Date":"SellDate",
                                                                             "Value":"SellValue"}, axis=1).drop("Action", axis=1)
 
-        closed = pd.merge(buy_df, sell_df, on=["TICKER","NumShares","Trade"])
+        closed = pd.merge(buy_df, sell_df, on=["UNIQUE","NumShares","Trade"])
+        closed[["TRADINGSTRATEGY","TICKER","TIMEFRAME"]] = closed["UNIQUE"].str.split("|", expand=True)
         closed["P/L"] = closed["SellValue"] - closed["BuyValue"]
         closed["P/L (%)"] = (closed["SellValue"] - closed["BuyValue"]) / closed["BuyValue"] * 100
         return closed
@@ -214,10 +222,11 @@ class BackTesting:
         else:
             # format transaction
             transaction_write = cls.transaction.copy()
+            transaction_write[["TRADINGSTRATEGY","TICKER","TIMEFRAME"]] = transaction_write["UNIQUE"].str.split("|", expand=True)
             for col in ["Price","Value"]:
                 transaction_write[col] = transaction_write[col].map(lambda x: round(x,2))
             transaction_write["Date"] = pd.to_datetime(transaction_write["Date"], format="%Y-%m-%d")
-            transaction_write = transaction_write[["TICKER","Date","Action","Price","NumShares","Value"]].copy()
+            transaction_write = transaction_write[["TRADINGSTRATEGY","TICKER","TIMEFRAME","Date","Action","Price","NumShares","Value"]].copy()
 
             closed = cls.get_closed_position()
             # format closed position
@@ -225,8 +234,7 @@ class BackTesting:
                 closed[col] = pd.to_datetime(closed[col], format="%Y-%m-%d")
             for col in ["BuyPrice","SellPrice","BuyValue","SellValue","P/L","P/L (%)"]:
                 closed[col] = closed[col].map(lambda x: round(x,2))
-            closed = closed.drop("Trade", axis=1)
-            closed = closed[["TICKER","BuyDate","NumShares","BuyPrice","BuyValue","SellDate","SellPrice","SellValue","P/L","P/L (%)"]]
+            closed = closed[["TRADINGSTRATEGY","TICKER","TIMEFRAME","BuyDate","NumShares","BuyPrice","BuyValue","SellDate","SellPrice","SellValue","P/L","P/L (%)"]].copy()
 
             # write to excel
             timestamp = str(datetime.now())[:19].replace(":","")

@@ -5,17 +5,49 @@ import numpy as np
 class TradingStrategy:
     position_size = 0.3
 
-    def __init__(self, chart="OHLC"):
-        if chart not in ["OHLC","line"]:
-            raise ValueError("Only charts allowed are OHLC,line")
+    def __init__(self):
+        pass
 
-        # initiation
-        self.__chart = chart
+    def buy(self, df):
+        '''
+        Identify buy signal and the buying price
+        Return Tuple of (bool, float)
+        baseline: buy at closing price
+        '''
+        signal_df = df.sort_values(["Date"]).tail(1)
+        return (True, signal_df["Close"].iloc[0], signal_df["Date"].iloc[0])
+        
 
-    @property
-    def chart(self):
-        return self.__chart
+    
+    def sell(self, df):
+        '''
+        Identify sell signal and the selling price
+        Return Tuple of (bool, float)
+        baseline strategy: sell at closing price
+        '''
+        signal_df = df.sort_values(["Date"]).tail(1)
 
+        return (True, signal_df["Close"].iloc[0], signal_df["Date"].iloc[0])
+
+    def position_sizing(self):
+        '''
+        positioning. to determine the position size of each buy
+        '''
+        return self.position_size
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}"
+
+    def __name__(self):
+        return "TradingStrategy"
+
+
+
+class SimpleMovingAverage(TradingStrategy):
+    
+    def __init__(self, window =9):
+        super().__init__()
+        self.window = window
 
     def buy(self, df):
         '''
@@ -54,15 +86,6 @@ class TradingStrategy:
             signal_date = df["Date"].iloc[-1]
             return (signal, signal_price, signal_date)
 
-    def position_sizing(self):
-        '''
-        positioning. to determine the position size of each buy
-        '''
-        return self.position_size
-
     def __repr__(self):
-        return f"{self.__class__.__name__}('{self.__chart}')"
-
-    def __name__(self):
-        return "TradingStrategy"
-
+        return f"{self.__class__.__name__}({self.window})"
+    

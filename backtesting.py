@@ -11,10 +11,15 @@ import os
 class BackTesting:
     transaction = pd.DataFrame()
 
-    def __init__(self, strategy):
+    def __init__(self, strategy: TradingStrategy):
         # validation
-        if strategy.__name__() != "TradingStrategy":
-            raise ValueError("Only class of TradingStrategy is accepted for backtesting")
+        try:
+            strategy_name = strategy.__name__()
+        except AttributeError:
+            strategy_name = None
+        finally:
+            if strategy_name !="TradingStrategy":
+                raise ValueError("Only class of TradingStrategy is accepted for backtesting")
 
         # initiation
         self.__strategy = strategy

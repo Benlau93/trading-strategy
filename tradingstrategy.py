@@ -62,7 +62,7 @@ class SimpleMovingAverage(TradingStrategy):
 
         else:
             df = df.sort_values(["Date"])
-            signal_price = df[-size:-1].rolling(9).mean()["Close"].iloc[-1]
+            signal_price = df[-size:-1].rolling(self.window).mean()["Close"].iloc[-1]
             # check if current price exceed signal_price
             signal = True if df["High"].iloc[-1] > signal_price else False
             signal_date = df["Date"].iloc[-1]
@@ -82,7 +82,7 @@ class SimpleMovingAverage(TradingStrategy):
 
         else:
             df = df.sort_values(["Date"])
-            signal_price = df[-size:-1].rolling(9).mean()["Close"].iloc[-1]
+            signal_price = df[-size:-1].rolling(self.window).mean()["Close"].iloc[-1]
             # check if current price below signal_price
             signal = True if df["Low"].iloc[-1] < signal_price else False
             signal_date = df["Date"].iloc[-1]

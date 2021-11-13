@@ -227,7 +227,7 @@ class BackTesting:
 
 
     @classmethod
-    def export_result(cls, filepath):
+    def export_result(cls, filepath = os.getcwd()):
         if len(cls.transaction) < 1:
             raise Exception("There is no result to export")
 

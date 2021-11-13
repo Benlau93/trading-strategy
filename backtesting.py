@@ -1,5 +1,8 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+from pandas.io.formats import style
+import mplfinance as mpf
 from tradingstrategy import TradingStrategy
 import yfinance as yf
 from datetime import date
@@ -7,6 +10,7 @@ from datetime import datetime
 from dateutil import parser
 import xlsxwriter
 import os
+
 
 class BackTesting:
     transaction = pd.DataFrame()
@@ -65,32 +69,35 @@ class BackTesting:
             ticker = ticker.upper()
 
         # get unique identifier of current backtesting
-        unique = self.strategy.__repr__() + "|" + ticker + "|" + str(start_date) + " to " + str(end_date) + ", " + timeframe
+        self.__unique = self.strategy.__repr__() + "|" + ticker + "|" + str(start_date) + " to " + str(end_date) + ", " + timeframe
 
         # initaite capital
         original_capital = capital
 
         # download historical price
         df = self.download_price(ticker ,timeframe, start_date, end_date)
+        # save latest downloaded price
+        self.__historical = df.sort_index().dropna()
+
         df = df.sort_index().dropna().reset_index()
 
         # get signal based on trading strategy and append to transaction
-        self.__get_trading_signal(unique, ticker, df, capital, fees, position_sizing, append, verbose)
+        self.__get_trading_signal(ticker, df, capital, fees, position_sizing, append, verbose)
 
         # generate result
-        result = self.__generate_result(unique, ticker, df, original_capital, buy_and_hold)
-        result = result[result["UNIQUE"]==unique].drop("UNIQUE", axis=1).reset_index(drop=True)
+        result = self.__generate_result(ticker, df, original_capital, buy_and_hold)
+        result = result[result["UNIQUE"]==self.__unique].drop("UNIQUE", axis=1).reset_index(drop=True)
         return result
 
 
-    def __generate_result(self, unique, ticker, df, original_capital, buy_and_hold):
+    def __generate_result(self, ticker, df, original_capital, buy_and_hold):
         print()
         print(f"----- {ticker} Result -----")
         if len(self.transaction) < 1:
             print("No transaction based on current trading strategy.")
         else:
             closed = self.get_closed_position()
-            closed = closed[closed["UNIQUE"]==unique].copy()
+            closed = closed[closed["UNIQUE"]==self.__unique].copy()
             pl = closed["P/L"].sum()
             pl = round(pl,2)
             pl_per = round(pl / original_capital * 100,2)
@@ -105,7 +112,7 @@ class BackTesting:
         return closed
 
 
-    def __get_trading_signal(self,unique, ticker, df, capital, fees, position_sizing, append, verbose):
+    def __get_trading_signal(self, ticker, df, capital, fees, position_sizing, append, verbose):
         # initaite trade
         trade = 0
         position = {}
@@ -140,7 +147,7 @@ class BackTesting:
                         continue
                     buy_value = (num_shares * buy_signal[1]) + fees
                     capital -= buy_value
-                    position = {"UNIQUE":unique,
+                    position = {"UNIQUE":self.__unique,
                                 "BuyPrice":buy_signal[1],
                                 "NumShares":num_shares,
                                 "BuyValue":buy_value,
@@ -167,6 +174,22 @@ class BackTesting:
             # record transaction
             if append:
                 self.__append_transaction(position)
+
+    def plot(self):
+        # get buying and selling price
+        signal_df = self.transaction[self.transaction["UNIQUE"]==self.__unique][["Date","Action","Price"]].set_index("Date")
+        buy_plot = signal_df[signal_df["Action"]=="Buy"][["Price"]].copy()
+        buy_plot = pd.merge(self.__historical, buy_plot, left_index=True, right_index=True, how="left")[["Price"]]
+        sell_plot = signal_df[signal_df["Action"]=="Sell"][["Price"]].copy()
+        sell_plot = pd.merge(self.__historical, sell_plot, left_index=True, right_index=True, how="left")[["Price"]]
+        
+        # add buy and sell marker
+        buy_plot = mpf.make_addplot(buy_plot,type='scatter',markersize=100,marker=6)
+        sell_plot = mpf.make_addplot(sell_plot,type='scatter',markersize=100,marker=7)
+
+        # plot chart
+        mpf.plot(self.__historical, type="candle", style="yahoo", addplot = [buy_plot, sell_plot], title = self.__unique, figscale = 1.5)
+        plt.show()
 
 
     @staticmethod

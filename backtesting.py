@@ -186,9 +186,15 @@ class BackTesting:
         # add buy and sell marker
         buy_plot = mpf.make_addplot(buy_plot,type='scatter',markersize=100,marker=6)
         sell_plot = mpf.make_addplot(sell_plot,type='scatter',markersize=100,marker=7)
+        add_plot = [buy_plot, sell_plot]
 
+        # add any additional plot for the specific tradingstrategy
+        additional_plot = self.strategy.additional_plot_element(self.__historical)
+        if additional_plot:
+            add_plot.extend(additional_plot)
+        
         # plot chart
-        mpf.plot(self.__historical, type="candle", style="yahoo", addplot = [buy_plot, sell_plot], title = self.__unique, figscale = 1.5)
+        mpf.plot(self.__historical, type="candle", style ="yahoo", addplot = add_plot, title = self.__unique, figscale = 2)
         plt.show()
 
 

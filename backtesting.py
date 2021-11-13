@@ -28,8 +28,20 @@ class BackTesting:
     def strategy(self):
         return self.__strategy
 
+    @strategy.setter
+    def strategy(self, tradingStrategy):
+        # validation
+        try:
+            strategy_name = tradingStrategy.__name__()
+        except AttributeError:
+            strategy_name = None
+        finally:
+            if strategy_name !="TradingStrategy":
+                raise ValueError("Only class of TradingStrategy is accepted for backtesting")
 
-    def backtesting(self, ticker :str, start_date: str, end_date: str, timeframe = "1d" , capital = 10000, fees = 0, buy_and_hold = False,append = True, verbose = True):
+        self.__strategy = tradingStrategy
+
+    def backtesting(self, ticker :str, start_date: str, end_date: str, timeframe = "1d" , capital = 10000, fees = 0, position_sizing = 0.3 ,buy_and_hold = False,append = True, verbose = True):
         # validation
         if timeframe not in ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"]:
             raise ValueError("Only timeframe allowed are 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo")
@@ -63,7 +75,7 @@ class BackTesting:
         df = df.sort_index().dropna().reset_index()
 
         # get signal based on trading strategy and append to transaction
-        self.__get_trading_signal(unique, ticker, df, capital, fees, append, verbose)
+        self.__get_trading_signal(unique, ticker, df, capital, fees, position_sizing, append, verbose)
 
         # generate result
         result = self.__generate_result(unique, ticker, df, original_capital, buy_and_hold)
@@ -93,7 +105,7 @@ class BackTesting:
         return closed
 
 
-    def __get_trading_signal(self,unique, ticker, df, capital, fees, append, verbose):
+    def __get_trading_signal(self,unique, ticker, df, capital, fees, position_sizing, append, verbose):
         # initaite trade
         trade = 0
         position = {}
@@ -123,7 +135,7 @@ class BackTesting:
             else:
                 buy_signal = self.strategy.buy(df.iloc[:i,:])
                 if buy_signal[0]:
-                    num_shares = int((self.strategy.position_sizing() * capital) // buy_signal[1])
+                    num_shares = int((position_sizing * capital) // buy_signal[1])
                     if num_shares <= 0: # invalid trade if capital not enough to purchase additional stocks
                         continue
                     buy_value = (num_shares * buy_signal[1]) + fees
@@ -207,7 +219,7 @@ class BackTesting:
                                                                             "Date":"SellDate",
                                                                             "Value":"SellValue"}, axis=1).drop("Action", axis=1)
 
-        closed = pd.merge(buy_df, sell_df, on=["UNIQUE","NumShares","Trade"])
+        closed = pd.merge(buy_df, sell_df, on=["UNIQUE","NumShares","Trade"]).drop("Trade", axis=1)
         closed[["TRADINGSTRATEGY","TICKER","TIMEFRAME"]] = closed["UNIQUE"].str.split("|", expand=True)
         closed["P/L"] = closed["SellValue"] - closed["BuyValue"]
         closed["P/L (%)"] = (closed["SellValue"] - closed["BuyValue"]) / closed["BuyValue"] * 100

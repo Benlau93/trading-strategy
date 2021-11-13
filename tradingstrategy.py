@@ -3,7 +3,6 @@ import numpy as np
 
 
 class TradingStrategy:
-    position_size = 0.3
 
     def __init__(self):
         pass
@@ -28,12 +27,6 @@ class TradingStrategy:
         signal_df = df.sort_values(["Date"]).tail(1)
 
         return (True, signal_df["Close"].iloc[0], signal_df["Date"].iloc[0])
-
-    def position_sizing(self):
-        '''
-        positioning. to determine the position size of each buy
-        '''
-        return self.position_size
 
     def __repr__(self):
         return f"{self.__class__.__name__}"

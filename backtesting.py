@@ -114,7 +114,7 @@ class BackTesting:
 
     def __get_trading_signal(self, ticker, df, capital, fees, position_sizing, append, verbose):
         # initaite trade
-        trade = 0
+        trade = 1
         position = {}
         if verbose:
             print()
@@ -239,7 +239,7 @@ class BackTesting:
     def get_closed_position(cls):
         # validate
         if len(cls.transaction) < 1:
-            raise Exception("There is no result to export")
+            raise Exception("There is transaction yet. Run backtesting first")
         cls.transaction["Date"] = pd.to_datetime(cls.transaction["Date"], format="%Y-%m-%d")
         buy_df = cls.transaction[cls.transaction["Action"]=="Buy"].rename({"Price":"BuyPrice",
                                                                     "Date":"BuyDate",
@@ -248,11 +248,22 @@ class BackTesting:
                                                                             "Date":"SellDate",
                                                                             "Value":"SellValue"}, axis=1).drop("Action", axis=1)
 
-        closed = pd.merge(buy_df, sell_df, on=["UNIQUE","NumShares","Trade"]).drop("Trade", axis=1)
+        closed = pd.merge(buy_df, sell_df, on=["UNIQUE","NumShares","Trade"])
         closed[["TRADINGSTRATEGY","TICKER","TIMEFRAME"]] = closed["UNIQUE"].str.split("|", expand=True)
         closed["P/L"] = closed["SellValue"] - closed["BuyValue"]
         closed["P/L (%)"] = (closed["SellValue"] - closed["BuyValue"]) / closed["BuyValue"] * 100
         return closed
+
+    @classmethod
+    def get_performance(cls):
+        # validate
+        if len(cls.transaction) < 1:
+            raise Exception("There is transaction yet. Run backtesting first")
+
+        # generate performance
+        closed = cls.get_closed_position()
+        closed["UNIQUE"] = closed["TRADINGSTRATEGY"] + closed["TICKER"] + closed["TIMEFRAME"]
+        performance = pd.Series(closed["UNIQUE"].unique())
 
 
     @classmethod
@@ -275,7 +286,7 @@ class BackTesting:
                 closed[col] = pd.to_datetime(closed[col], format="%Y-%m-%d")
             for col in ["BuyPrice","SellPrice","BuyValue","SellValue","P/L","P/L (%)"]:
                 closed[col] = closed[col].map(lambda x: round(x,2))
-            closed = closed[["TRADINGSTRATEGY","TICKER","TIMEFRAME","BuyDate","NumShares","BuyPrice","BuyValue","SellDate","SellPrice","SellValue","P/L","P/L (%)"]].copy()
+            closed = closed[["TRADINGSTRATEGY","TICKER","TIMEFRAME","Trade","BuyDate","NumShares","BuyPrice","BuyValue","SellDate","SellPrice","SellValue","P/L","P/L (%)"]].copy()
 
             # write to excel
             timestamp = str(datetime.now())[:19].replace(":","")
@@ -285,3 +296,7 @@ class BackTesting:
             with pd.ExcelWriter(filename, date_format="YYYY-MM-DD") as writer:
                 transaction_write.to_excel(writer, sheet_name = "Transaction", index=False)
                 closed.to_excel(writer, sheet_name="Closed Position", index=False)
+
+    @classmethod
+    def clear_history(cls):
+        cls.transaction = pd.DataFrame()

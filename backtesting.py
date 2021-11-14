@@ -9,6 +9,7 @@ from datetime import datetime
 from dateutil import parser
 import xlsxwriter
 import os
+import re
 
 
 class BackTesting:
@@ -106,8 +107,8 @@ class BackTesting:
             # generate buy and hold returns
             bnh = self.buy_and_hold(df, original_capital)
             bnh_series = pd.Series({"UNIQUE":self.__unique,
-                            "P/L": bnh[0],
-                            "P/L (%)": bnh[1]})
+                            "(Buy and Hold) P/L": bnh[0],
+                            "(Buy and Hold) P/L (%)": bnh[1]})
             # append buy and hold
             self.__append_buyandhold(bnh_series)
             if buy_and_hold:
@@ -273,10 +274,59 @@ class BackTesting:
         if len(cls.transaction) < 1:
             raise Exception("There is transaction yet. Run backtesting first")
 
-        # generate performance
+        # pre-processing
         closed = cls.get_closed_position()
-        closed["UNIQUE"] = closed["TRADINGSTRATEGY"] + closed["TICKER"] + closed["TIMEFRAME"]
-        performance = pd.Series(closed["UNIQUE"].unique())
+        closed["UNIQUE"] = closed["TRADINGSTRATEGY"] + "|" + closed["TICKER"] + "|" + closed["TIMEFRAME"]
+        closed["PROFIT"] = closed["P/L"].map(lambda x: True if x>0 else False)
+        closed["LOSS"] = closed["P/L"].map(lambda x: False if x>0 else True)
+
+        def get_bar(row):
+            timeframe = row["TIMEFRAME"].split(",")[1]
+            time_digit, time_str = re.search("[0-9]+",timeframe)[0], re.search("[a-z]+", timeframe)[0]
+            bar_map = {"m":60,
+                    "h":3600,
+                    "d":86400,
+                    "wk":604800,
+                    "mo":2419200}
+            bar = int(time_digit) * bar_map[time_str]
+            return int((row["SellDate"] - row["BuyDate"]).total_seconds() // bar)
+    
+        closed["BAR"] = closed.apply(get_bar,axis=1)
+        # engineer performance metrics that require additional processing
+        closed_win = closed[closed["PROFIT"]][["UNIQUE","P/L","BAR"]].groupby("UNIQUE").agg(
+            AvergeWinTrade = pd.NamedAgg(column="P/L", aggfunc="mean"),
+            AverageWinBar = pd.NamedAgg(column="BAR", aggfunc="mean")).reset_index()
+        closed_lose = closed[closed["LOSS"]][["UNIQUE","P/L","BAR"]].groupby("UNIQUE").agg(
+            AvergeLossTrade = pd.NamedAgg(column="P/L", aggfunc="mean"),
+            AverageLossBar = pd.NamedAgg(column="BAR", aggfunc="mean")).reset_index()
+        # to handle if there is no winning or losing trade
+        if len(closed_win) == 0:
+            closed_merge = closed_lose
+        elif len(closed_lose) ==0:
+            closed_merge = closed_win
+        else:
+            closed_merge = pd.merge(closed_win, closed_lose, on="UNIQUE")
+        closed_merge = pd.merge(closed_merge, cls.buyandhold, on="UNIQUE")
+
+        # get performance metrics
+        performance = closed.groupby(["UNIQUE","TRADINGSTRATEGY","TICKER","TIMEFRAME"]).agg(
+                            NetProfit = pd.NamedAgg(column="P/L", aggfunc="sum"),
+                            TotalTrade = pd.NamedAgg(column="Trade", aggfunc="max"),
+                            NumWinningTrade = pd.NamedAgg(column = "PROFIT", aggfunc="sum"),
+                            NumLosingTrade = pd.NamedAgg(column="LOSS", aggfunc="sum"),
+                            PercentProfitable = pd.NamedAgg(column="PROFIT",aggfunc="mean"),
+                            LargestWining = pd.NamedAgg(column="P/L", aggfunc="max"),
+                            LargestLosing = pd.NamedAgg(column="P/L", aggfunc="min"),
+                            AverageTrade = pd.NamedAgg(column="P/L", aggfunc="mean"),
+                            AverageNumBar = pd.NamedAgg(column="BAR", aggfunc="mean"),
+                            HighestNumBar = pd.NamedAgg(column="BAR", aggfunc="max"),
+                            LowestNumBar = pd.NamedAgg(column="BAR", aggfunc="min")).reset_index()
+
+        performance = pd.merge(performance, closed_merge, on="UNIQUE").drop("UNIQUE", axis=1).set_index(["TRADINGSTRATEGY","TICKER","TIMEFRAME"])
+        performance = performance.stack().reset_index().rename({"level_3":"Performance Metrics",0:"Value"}, axis=1)
+        performance["Value"] = performance["Value"].map(lambda x: round(x, 2))
+        print(performance.head())
+        return performance
 
 
     @classmethod
@@ -285,7 +335,7 @@ class BackTesting:
             raise Exception("There is no result to export")
 
         else:
-            # format transaction
+            # get transaction
             transaction_write = cls.transaction.copy()
             transaction_write[["TRADINGSTRATEGY","TICKER","TIMEFRAME"]] = transaction_write["UNIQUE"].str.split("|", expand=True)
             for col in ["Price","Value"]:
@@ -294,13 +344,17 @@ class BackTesting:
             transaction_write = transaction_write[["TRADINGSTRATEGY","TICKER","TIMEFRAME","Date","Action","Price","NumShares","Value"]].copy()
 
             closed = cls.get_closed_position()
-            # format closed position
+            # get closed position
             for col in ["BuyDate","SellDate"]:
                 closed[col] = pd.to_datetime(closed[col], format="%Y-%m-%d")
             for col in ["BuyPrice","SellPrice","BuyValue","SellValue","P/L","P/L (%)"]:
                 closed[col] = closed[col].map(lambda x: round(x,2))
             closed = closed[["TRADINGSTRATEGY","TICKER","TIMEFRAME","Trade","BuyDate","NumShares","BuyPrice","BuyValue","SellDate","SellPrice","SellValue","P/L","P/L (%)"]].copy()
 
+            # get performance metrics
+            performance = cls.get_performance()
+            performance = performance[["TRADINGSTRATEGY","TICKER","TIMEFRAME","Performance Metrics","Value"]]
+            # print(performance.head())
             # write to excel
             timestamp = str(datetime.now())[:19].replace(":","")
             filename = os.path.join(filepath,f"backtesting result_{timestamp}.xlsx")
@@ -309,7 +363,9 @@ class BackTesting:
             with pd.ExcelWriter(filename, date_format="YYYY-MM-DD") as writer:
                 transaction_write.to_excel(writer, sheet_name = "Transaction", index=False)
                 closed.to_excel(writer, sheet_name="Closed Position", index=False)
+                performance.to_excel(writer, sheet_name="Performance Metrics", index=False)
 
     @classmethod
     def clear_history(cls):
         cls.transaction = pd.DataFrame()
+        cls.buyandhold = pd.DataFrame()

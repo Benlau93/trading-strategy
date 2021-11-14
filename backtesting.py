@@ -325,7 +325,6 @@ class BackTesting:
         performance = pd.merge(performance, closed_merge, on="UNIQUE").drop("UNIQUE", axis=1).set_index(["TRADINGSTRATEGY","TICKER","TIMEFRAME"])
         performance = performance.stack().reset_index().rename({"level_3":"Performance Metrics",0:"Value"}, axis=1)
         performance["Value"] = performance["Value"].map(lambda x: round(x, 2))
-        print(performance.head())
         return performance
 
 

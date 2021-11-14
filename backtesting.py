@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from pandas.io.formats import style
 import mplfinance as mpf
 from tradingstrategy import TradingStrategy
 import yfinance as yf
@@ -14,6 +13,7 @@ import os
 
 class BackTesting:
     transaction = pd.DataFrame()
+    buyandhold = pd.DataFrame()
 
     def __init__(self, strategy: TradingStrategy):
         # validation
@@ -103,11 +103,16 @@ class BackTesting:
             pl_per = round(pl / original_capital * 100,2)
             print(f"{self.strategy.__repr__()}: Total Profit of ${pl} ({pl_per}%) with {len(closed)} closed position(s)")
 
+            # generate buy and hold returns
+            bnh = self.buy_and_hold(df, original_capital)
+            bnh_series = pd.Series({"UNIQUE":self.__unique,
+                            "P/L": bnh[0],
+                            "P/L (%)": bnh[1]})
+            # append buy and hold
+            self.__append_buyandhold(bnh_series)
             if buy_and_hold:
-                bnh = self.buy_and_hold(df)
-                bnh_pl = round(bnh[1] / 100 * original_capital,2)
-                print(f"Buy and Hold: Total Profit of ${bnh_pl} ({bnh[1]}%)")
-                better_strategy = self.strategy.__repr__() if pl > bnh_pl else "Buy and Hold"
+                print(f"Buy and Hold: Total Profit of ${bnh[0]} ({bnh[1]}%)")
+                better_strategy = self.strategy.__repr__() if pl > bnh[0] else "Buy and Hold"
                 print(f"{better_strategy} is a better strategy")
         return closed
 
@@ -209,12 +214,20 @@ class BackTesting:
     
 
     @staticmethod
-    def buy_and_hold(df):
+    def buy_and_hold(df, original_capital = None):
         buy_price = df.sort_values("Date").head(1)["Close"].iloc[0]
         cur_price = df.sort_values("Date").tail(1)["Close"].iloc[0]
         pl = round(cur_price - buy_price, 2)
-        pl_per = round((cur_price - buy_price) / buy_price * 100, 2)
+        pl_per = (cur_price - buy_price)/ buy_price
+        if original_capital:
+            pl = round(pl_per * original_capital,2)
+        pl_per = round(pl_per * 100, 2)
         return (pl, pl_per)
+
+    @classmethod
+    def __append_buyandhold(cls, bnh_series):
+        cls.buyandhold = cls.buyandhold.append(bnh_series, sort=True, ignore_index=True)
+        cls.buyandhold = cls.buyandhold.drop_duplicates(subset=["UNIQUE"])
 
 
     @classmethod

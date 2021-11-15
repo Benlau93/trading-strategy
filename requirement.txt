@@ -1,0 +1,31 @@
+Bottleneck==1.3.2
+certifi==2021.10.8
+charset-normalizer==2.0.7
+cycler==0.10.0
+fonttools==4.25.0
+idna==3.3
+kiwisolver @ file:///C:/ci/kiwisolver_1612282606037/work
+lxml==4.6.4
+matplotlib @ file:///C:/ci/matplotlib-suite_1634667159685/work
+mkl-fft==1.3.1
+mkl-random @ file:///C:/ci/mkl_random_1626186184278/work
+mkl-service==2.4.0
+mplfinance==0.12.7a17
+multitasking==0.0.10
+munkres==1.1.4
+numexpr @ file:///C:/ci/numexpr_1618856738664/work
+numpy @ file:///C:/ci/numpy_and_numpy_base_1634106873763/work
+olefile @ file:///Users/ktietz/demo/mc3/conda-bld/olefile_1629805411829/work
+pandas @ file:///C:/ci/pandas_1635488579061/work
+Pillow==8.4.0
+pyparsing @ file:///tmp/build/80754af9/pyparsing_1635766073266/work
+python-dateutil @ file:///tmp/build/80754af9/python-dateutil_1626374649649/work
+pytz==2021.3
+requests==2.26.0
+sip==4.19.13
+six @ file:///tmp/build/80754af9/six_1623709665295/work
+tornado @ file:///C:/ci/tornado_1606942392901/work
+urllib3==1.26.7
+wincertstore==0.2
+XlsxWriter @ file:///tmp/build/80754af9/xlsxwriter_1636633762820/work
+yfinance==0.1.66

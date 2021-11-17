@@ -208,6 +208,9 @@ class BackTesting:
     def download_price(ticker ,timeframe, start_date, end_date):
         # download historical price using yfinance
         historical = yf.download(ticker, start=start_date, end=end_date, interval=timeframe, auto_adjust=True, progress = False)
+        if len(historical) <1:
+            raise Exception(f"No historical data found for {ticker}")
+        
         if "Adj Close" in historical.columns.tolist():
             historical["Close"] = historical["Adj Close"]
 

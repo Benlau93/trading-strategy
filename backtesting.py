@@ -13,10 +13,7 @@ import re
 
 
 class BackTesting:
-    transaction = pd.DataFrame()
-    buyandhold = pd.DataFrame()
-
-    def __init__(self, strategy: TradingStrategy):
+    def __init__(self, strategy: TradingStrategy, transaction=pd.DataFrame()):
         # validation
         try:
             strategy_name = strategy.__name__()
@@ -28,6 +25,7 @@ class BackTesting:
 
         # initiation
         self.__strategy = strategy
+        self.transaction = transaction
 
     @property
     def strategy(self):
@@ -46,7 +44,7 @@ class BackTesting:
 
         self.__strategy = tradingStrategy
 
-    def backtesting(self, ticker :str, start_date: str, end_date: str, timeframe = "1d" , capital = 10000, fees = 0, position_sizing = 0.3 ,buy_and_hold = False,append = True, verbose = True):
+    def backtesting(self, ticker :str, start_date: str, end_date: str, timeframe = "1d", buy_and_hold = False, verbose = True):
         # validation
         if timeframe not in ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"]:
             raise ValueError("Only timeframe allowed are 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo")
@@ -56,10 +54,6 @@ class BackTesting:
             end_date = parser.parse(end_date).date()
         except:
             raise ValueError("Start or End date is not a valid date format")
-        if capital < 0:
-            raise ValueError("Capital cannot be less than 0")
-        if fees < 0:
-            raise ValueError("Fees cannot be less than 0")
 
         # get ticker
         if ticker.endswith(".txt"):
@@ -72,26 +66,23 @@ class BackTesting:
         # get unique identifier of current backtesting
         self.__unique = self.strategy.__repr__() + "|" + ticker + "|" + str(start_date) + " to " + str(end_date) + ", " + timeframe
 
-        # initaite capital
-        original_capital = capital
-
         # download historical price
-        df = self.download_price(ticker ,timeframe, start_date, end_date)
+        df = self.download_price(ticker ,timeframe)
         # save latest downloaded price
         self.__historical = df.sort_index().dropna()
 
-        df = df.sort_index().dropna().reset_index()
+        df = df.sort_index().dropna()
 
         # get signal based on trading strategy and append to transaction
-        self.__get_trading_signal(ticker, df, capital, fees, position_sizing, append, verbose)
+        self.__get_trading_signal(ticker, df, start_date, end_date, verbose)
 
         # generate result
-        result = self.__generate_result(ticker, df, original_capital, buy_and_hold)
+        result = self.__generate_result(ticker, df, buy_and_hold)
         result = result[result["UNIQUE"]==self.__unique].drop("UNIQUE", axis=1).reset_index(drop=True)
         return result
 
 
-    def __generate_result(self, ticker, df, original_capital, buy_and_hold):
+    def __generate_result(self, ticker, df, buy_and_hold):
         print()
         print(f"----- {ticker} Result -----")
         if len(self.transaction) < 1:
@@ -99,13 +90,12 @@ class BackTesting:
         else:
             closed = self.get_closed_position()
             closed = closed[closed["UNIQUE"]==self.__unique].copy()
-            pl = closed["P/L"].sum()
-            pl = round(pl,2)
-            pl_per = round(pl / original_capital * 100,2)
-            print(f"{self.strategy.__repr__()}: Total Profit of ${pl} ({pl_per}%) with {len(closed)} closed position(s)")
+            pl_per = closed["P/L (%)"].sum()
+            pl_per = round(pl_per * 100,2)
+            print(f"{self.strategy.__repr__()}: Total Profit of ({pl_per}%) with {len(closed)} closed position(s)")
 
             # generate buy and hold returns
-            bnh = self.buy_and_hold(df, original_capital)
+            bnh = self.buy_and_hold(df)
             bnh_series = pd.Series({"UNIQUE":self.__unique,
                             "(Buy and Hold) P/L": bnh[0],
                             "(Buy and Hold) P/L (%)": bnh[1]})
@@ -118,68 +108,57 @@ class BackTesting:
         return closed
 
 
-    def __get_trading_signal(self, ticker, df, capital, fees, position_sizing, append, verbose):
+    def __get_trading_signal(self, ticker, df, start_date, end_date, verbose):
         # initaite trade
         trade = 1
         position = {}
+        signals = self.strategy.generate_signal()
+        df["BUY"], df["SELL"] = signals[0], signals[1]
+        df = df[(df.index.date >= start_date) & (df.index.date <= end_date)].copy()
         if verbose:
             print()
             print(f"----- {ticker} Transaction(s) -----")
-        for i in range(1,len(df)+1):
+        for row in df.iterrows():
             if position:
-                sell_signal = self.strategy.sell(df.iloc[:i,:])
-                if sell_signal[0]:
-                    sell_value = (position["NumShares"] * sell_signal[1]) - fees
-                    capital += sell_value
-                    closed_dict = {"SellDate":sell_signal[2],
-                                    "SellPrice":sell_signal[1],
-                                    "SellValue":sell_value}
+                if row["SELL"]:
+                    closed_dict = {"SellDate":row.index,
+                                    "SellPrice":row["SELL"]}
                     position.update(closed_dict)
+                    # verbose
+                    if verbose:
+                        print(f"Sold {position['ticker']} at ${position['SellPrice']} on {position['SellDate']}")
+                        
+                    
                     # update trade
                     trade += 1
                     # record transaction
-                    if append:
-                        self.__append_transaction(position)
+                    self.__append_transaction(position)
                     # remove position
                     position = {}
-                    # verbose
-                    if verbose:
-                        print(f"Sold {num_shares} of {ticker} shares at ${round(sell_signal[1],2)} on {str(sell_signal[2])[:10]}")
+
             else:
-                buy_signal = self.strategy.buy(df.iloc[:i,:])
-                if buy_signal[0]:
-                    num_shares = int((position_sizing * capital) // buy_signal[1])
-                    if num_shares <= 0: # invalid trade if capital not enough to purchase additional stocks
-                        continue
-                    buy_value = (num_shares * buy_signal[1]) + fees
-                    capital -= buy_value
+                if row["BUY"]:
                     position = {"UNIQUE":self.__unique,
-                                "BuyPrice":buy_signal[1],
-                                "NumShares":num_shares,
-                                "BuyValue":buy_value,
-                                "BuyDate":buy_signal[2],
+                                "ticker":ticker,
+                                "BuyPrice":row["BUY"],
+                                "BuyDate":row.index,
                                 "Trade":trade}
                     # record transactions
-                    if append:
-                        self.__append_transaction(position)
+                    self.__append_transaction(position)
 
                     # verbose
                     if verbose:
-                        print(f"Bought {num_shares} of {ticker} shares at ${round(buy_signal[1],2)} on {str(buy_signal[2])[:10]}")
+                        print(f"Bought {ticker} at ${position['BuyPrice']} on {position['BuyDate']}")
         
         if position:
-            final_price = df.sort_values(["Date"]).tail(1)
-            sell_value = (position["NumShares"] * final_price["Close"].iloc[0]) - fees
-            capital += sell_value
-            closed_dict = {"SellDate":final_price["Date"].iloc[0],
-                            "SellPrice":final_price["Close"].iloc[0],
-                            "SellValue":sell_value}
+            final_price = df.sort_index.tail(1)
+            closed_dict = {"SellDate":final_price.index,
+                            "SellPrice":final_price["Close"].iloc[0]}
             position.update(closed_dict)
             # update trade
             trade += 1
             # record transaction
-            if append:
-                self.__append_transaction(position)
+            self.__append_transaction(position)
 
     def plot(self):
         # get buying and selling price
@@ -205,9 +184,10 @@ class BackTesting:
 
 
     @staticmethod
-    def download_price(ticker ,timeframe, start_date, end_date):
+    def download_price(ticker ,timeframe, start_date=date(2015,1,1), end_date=date.today()):
         # download historical price using yfinance
         historical = yf.download(ticker, start=start_date, end=end_date, interval=timeframe, auto_adjust=True, progress = False)
+
         if len(historical) <1:
             raise Exception(f"No historical data found for {ticker}")
         
@@ -218,13 +198,12 @@ class BackTesting:
     
 
     @staticmethod
-    def buy_and_hold(df, original_capital = None):
-        buy_price = df.sort_values("Date").head(1)["Close"].iloc[0]
-        cur_price = df.sort_values("Date").tail(1)["Close"].iloc[0]
+    def buy_and_hold(df):
+        close = "Adj Close" if "Adj Close" in df.columns else "Close"
+        buy_price = df.sort_index().head(1)[close].iloc[0]
+        cur_price = df.sort_index().tail(1)[close].iloc[0]
         pl = round(cur_price - buy_price, 2)
         pl_per = (cur_price - buy_price)/ buy_price
-        if original_capital:
-            pl = round(pl_per * original_capital,2)
         pl_per = round(pl_per * 100, 2)
         return (pl, pl_per)
 
@@ -234,8 +213,7 @@ class BackTesting:
         cls.buyandhold = cls.buyandhold.drop_duplicates(subset=["UNIQUE"])
 
 
-    @classmethod
-    def __append_transaction(cls, position):
+    def __append_transaction(self, position):
         # append transaction
         position = pd.Series(position)
         if "SellPrice" in position.index:
@@ -243,32 +221,27 @@ class BackTesting:
         position["Action"] = "Sell" if "SellPrice" in position.index else "Buy"
         position = position.rename({"SellPrice":"Price",
                                         "BuyPrice":"Price",
-                                        "BuyValue":"Value",
-                                        "SellValue":"Value",
                                         "BuyDate":"Date",
                                         "SellDate":"Date"})
         
-        cls.transaction = cls.transaction.append(position, sort=True, ignore_index=True)
-        cls.transaction = cls.transaction.drop_duplicates(subset=["UNIQUE","Date","Action"])
+        self.transaction = self.transaction.append(position, sort=True, ignore_index=True)
+        self.transaction = self.transaction.drop_duplicates(subset=["UNIQUE","Date","Action"])
 
 
-    @classmethod
-    def get_closed_position(cls):
+    def get_closed_position(self):
         # validate
-        if len(cls.transaction) < 1:
+        if len(self.transaction) < 1:
             raise Exception("There is transaction yet. Run backtesting first")
-        cls.transaction["Date"] = pd.to_datetime(cls.transaction["Date"], format="%Y-%m-%d")
-        buy_df = cls.transaction[cls.transaction["Action"]=="Buy"].rename({"Price":"BuyPrice",
-                                                                    "Date":"BuyDate",
-                                                                    "Value":"BuyValue"}, axis=1).drop("Action", axis=1)
-        sell_df = cls.transaction[cls.transaction["Action"]=="Sell"].rename({"Price":"SellPrice",
-                                                                            "Date":"SellDate",
-                                                                            "Value":"SellValue"}, axis=1).drop("Action", axis=1)
+        self.transaction["Date"] = pd.to_datetime(self.transaction["Date"], format="%Y-%m-%d")
+        buy_df = self.transaction[self.transaction["Action"]=="Buy"].rename({"Price":"BuyPrice",
+                                                                    "Date":"BuyDate"}, axis=1).drop("Action", axis=1)
+        sell_df = self.transaction[self.transaction["Action"]=="Sell"].rename({"Price":"SellPrice",
+                                                                            "Date":"SellDate"}, axis=1).drop("Action", axis=1)
 
-        closed = pd.merge(buy_df, sell_df, on=["UNIQUE","NumShares","Trade"])
+        closed = pd.merge(buy_df, sell_df, on=["UNIQUE","Trade"])
         closed[["TRADINGSTRATEGY","TICKER","TIMEFRAME"]] = closed["UNIQUE"].str.split("|", expand=True)
-        closed["P/L"] = closed["SellValue"] - closed["BuyValue"]
-        closed["P/L (%)"] = (closed["SellValue"] - closed["BuyValue"]) / closed["BuyValue"] * 100
+        closed["P/L"] = closed["SellPrice"] - closed["BuyPrice"]
+        closed["P/L (%)"] = (closed["SellPrice"] - closed["BuyPrice"]) / closed["BuyPrice"]
         return closed
 
     @classmethod

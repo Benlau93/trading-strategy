@@ -1,10 +1,14 @@
 import pandas as pd
 import numpy as np
 import mplfinance as mpf
+import tradingpattern as tp
 
 class TradingStrategy:
 
     def __init__(self):
+        pass
+
+    def generate_signal(self):
         pass
 
     def buy(self, df):
@@ -73,44 +77,38 @@ class SimpleMovingAverage(TradingStrategy):
             raise ValueError("Moving averager price should be Open, High, Low, or Close")
         self.__value = new_value
 
-    def buy(self, df):
+    def generate_signal(self, df):
         '''
-        Identify buy signal and the buying price
+        Identify buy and sell signals and the respective price
         Return Tuple of (bool, float)
-        baseline strategy -> Buy when above 9 SMA
+        baseline strategy -> Buy when above SMA, Sell when below SMA
         '''
-        # check if dataframe is big enough to construct 9 SMA
-        size = self.window + 1
-        if len(df) < size:
-            return (False, 0)
 
-        else:
-            df = df.sort_values(["Date"])
-            signal_price = df[-size:-1].rolling(self.window).mean()[self.__value].iloc[-1]
-            # check if current price exceed signal_price
-            signal = True if df["High"].iloc[-1] > signal_price else False
-            signal_date = df["Date"].iloc[-1]
-            return (signal, signal_price, signal_date)
+        value = "Adj Close" if "Adj Close" in self.df.columns else "Close"
+        df["SMA"] = tp.moving_average(self.df, self.window, value = value)
+        buy_signal = df.apply(lambda row: row["SMA"] if row[value] > row["SMA"] else np.nan, axis=1).values
+        sell_signal = df.apply(lambda row: row["SMA"] if row[value] < row["SMA"] else np.nan, axis=1).values
+        return (buy_signal, sell_signal)
         
 
     
-    def sell(self, df):
-        '''
-        Identify sell signal and the selling price
-        Return Tuple of (bool, float)
-        baseline strategy -> sell when below 9 SMA
-        '''
-        size = self.window + 1
-        if len(df) < size:
-            return (False, 0)
+    # def sell(self, df):
+    #     '''
+    #     Identify sell signal and the selling price
+    #     Return Tuple of (bool, float)
+    #     baseline strategy -> sell when below 9 SMA
+    #     '''
+    #     size = self.window + 1
+    #     if len(df) < size:
+    #         return (False, 0)
 
-        else:
-            df = df.sort_values(["Date"])
-            signal_price = df[-size:-1].rolling(self.window).mean()[self.__value].iloc[-1]
-            # check if current price below signal_price
-            signal = True if df["Low"].iloc[-1] < signal_price else False
-            signal_date = df["Date"].iloc[-1]
-            return (signal, signal_price, signal_date)
+    #     else:
+    #         df = df.sort_values(["Date"])
+    #         signal_price = df[-size:-1].rolling(self.window).mean()[self.__value].iloc[-1]
+    #         # check if current price below signal_price
+    #         signal = True if df["Low"].iloc[-1] < signal_price else False
+    #         signal_date = df["Date"].iloc[-1]
+    #         return (signal, signal_price, signal_date)
 
     def additional_plot_element(self, df):
         addplot = df.sort_index().rolling(self.window).mean()[self.__value]

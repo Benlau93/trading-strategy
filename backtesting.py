@@ -93,8 +93,10 @@ class BackTesting:
         # generate buy and hold return
         df_filtered = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)].copy()
         bnh = self.buy_and_hold(df_filtered)
+        max_paper_loss = ((bnh[0] - df_filtered["Close"].min()) / bnh[0]) if df_filtered["Close"].min() < bnh[0] else 0
         bnh_series = pd.Series({"UNIQUE":self.__unique,
-                        "(Buy and Hold) P/L (%)": bnh[1]})
+                        "Buy and Hold P/L (%)": bnh[2],
+                        "Buy and Hold Max Loss (%)":-max_paper_loss})
         # append buy and hold
         self.__append_buyandhold(bnh_series)
 
@@ -119,7 +121,7 @@ class BackTesting:
             print(f"{self.strategy.__repr__()}: Total Profit of {pl_per}% with {len(closed)} closed position(s)")
 
         if buy_and_hold:
-            bnl_pl = round(buy_and_hold[1] * 100,2)
+            bnl_pl = round(buy_and_hold[2] * 100,2)
             print(f"Buy and Hold: Total Profit of {bnl_pl}%")
             better_strategy = self.strategy.__repr__() if pl_per > bnl_pl else "Buy and Hold"
             print(f"{better_strategy} is a better strategy")
@@ -206,7 +208,6 @@ class BackTesting:
             add_plot.extend(additional_plot)
         
         # plot chart
-
         mpf.plot(df_plot, type="candle", style ="yahoo", addplot = add_plot, title = self.__unique, figscale = 2)
         plt.show()
 
@@ -219,7 +220,7 @@ class BackTesting:
         if len(historical) <1:
             raise Exception(f"No historical data found for {ticker}")
 
-        return historical.reset_index()
+        return historical.reset_index().dropna()
     
 
     @staticmethod
@@ -228,7 +229,7 @@ class BackTesting:
         cur_price = df.tail(1)["Close"].iloc[0]
         pl = round(cur_price - buy_price, 2)
         pl_per = (cur_price - buy_price)/ buy_price
-        return (pl, pl_per)
+        return (buy_price, pl, pl_per)
 
     def __append_buyandhold(self, bnh_series):
         self.buyandhold = self.buyandhold.append(bnh_series, sort=True, ignore_index=True)
@@ -356,7 +357,6 @@ class BackTesting:
             # get performance metrics
             performance = self.get_performance()
             performance = performance[["TRADINGSTRATEGY","TICKER","TIMEPERIOD","INTERVAL","Performance Metrics","Value"]]
-            # print(performance.head())
             # write to excel
             timestamp = str(datetime.now())[:19].replace(":","")
             filename = os.path.join(filepath,f"backtesting result_{timestamp}.xlsx")

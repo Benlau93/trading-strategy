@@ -11,7 +11,6 @@ def moving_average(price: pd.DataFrame, window:int, value="Close", type="simple"
     if type not in ["simple","weighted","exponential"]:
         raise Exception("Type should be one of simple,weighted,exponential")
 
-
     if type == "exponential":
         sma = price[value].rolling(window).mean()
         ema = price[value].copy()
@@ -28,7 +27,15 @@ def moving_average(price: pd.DataFrame, window:int, value="Close", type="simple"
 
 
 def cross_over(ma1, ma2):
-    pass
+    crossover = np.where(ma1 > ma2, 1,0)
+    crossover = np.diff(crossover)
+    crossover = np.append(np.array([0]) , crossover)
+    crossover = np.where(crossover == 1, 1,0)
+    return crossover
 
 def cross_under(ma1, ma2):
-    pass
+    crossunder = np.where(ma1 > ma2, 1,0)
+    crossunder = np.diff(crossunder)
+    crossunder = np.append(np.array([0]) , crossunder)
+    crossunder = np.where(crossunder == -1, 1,0)
+    return crossunder

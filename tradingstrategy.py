@@ -8,29 +8,12 @@ class TradingStrategy:
     def __init__(self):
         pass
 
-    def generate_signal(self):
-        pass
+    def generate_signal(self, df):
+        value = "Adj Close" if "Adj Close" in df.columns else "Close"
+        buy_signal = df[value].values
+        sell_signal = df[value].values
+        return (buy_signal, sell_signal)
 
-    def buy(self, df):
-        '''
-        Identify buy signal and the buying price
-        Return Tuple of (bool, float)
-        baseline: buy at closing price
-        '''
-        signal_df = df.sort_values(["Date"]).tail(1)
-        return (True, signal_df["Close"].iloc[0], signal_df["Date"].iloc[0])
-        
-
-    
-    def sell(self, df):
-        '''
-        Identify sell signal and the selling price
-        Return Tuple of (bool, float)
-        baseline strategy: sell at closing price
-        '''
-        signal_df = df.sort_values(["Date"]).tail(1)
-
-        return (True, signal_df["Close"].iloc[0], signal_df["Date"].iloc[0])
 
     def __repr__(self):
         return f"{self.__class__.__name__}"
@@ -84,34 +67,17 @@ class SimpleMovingAverage(TradingStrategy):
         baseline strategy -> Buy when above SMA, Sell when below SMA
         '''
 
-        value = "Adj Close" if "Adj Close" in self.df.columns else "Close"
-        df["SMA"] = tp.moving_average(self.df, self.window, value = value)
+        value = "Adj Close" if "Adj Close" in df.columns else "Close"
+        df["SMA"] = tp.moving_average(df, self.window, value = value)
         buy_signal = df.apply(lambda row: row["SMA"] if row[value] > row["SMA"] else np.nan, axis=1).values
         sell_signal = df.apply(lambda row: row["SMA"] if row[value] < row["SMA"] else np.nan, axis=1).values
         return (buy_signal, sell_signal)
-        
 
-    
-    # def sell(self, df):
-    #     '''
-    #     Identify sell signal and the selling price
-    #     Return Tuple of (bool, float)
-    #     baseline strategy -> sell when below 9 SMA
-    #     '''
-    #     size = self.window + 1
-    #     if len(df) < size:
-    #         return (False, 0)
+    def additional_plot_element(self, df, start_date, end_date):
+        df["ADDPLOT"] = df.rolling(self.window).mean()[self.value]
+        df = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)].copy()
+        addplot = df["ADDPLOT"]
 
-    #     else:
-    #         df = df.sort_values(["Date"])
-    #         signal_price = df[-size:-1].rolling(self.window).mean()[self.__value].iloc[-1]
-    #         # check if current price below signal_price
-    #         signal = True if df["Low"].iloc[-1] < signal_price else False
-    #         signal_date = df["Date"].iloc[-1]
-    #         return (signal, signal_price, signal_date)
-
-    def additional_plot_element(self, df):
-        addplot = df.sort_index().rolling(self.window).mean()[self.__value]
         return [mpf.make_addplot(addplot, type="line", width=1)]
 
 

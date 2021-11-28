@@ -66,11 +66,9 @@ class SimpleMovingAverage(TradingStrategy):
         Return Tuple of (bool, float)
         baseline strategy -> Buy when above SMA, Sell when below SMA
         '''
-
-        value = "Adj Close" if "Adj Close" in df.columns else "Close"
-        df["SMA"] = tp.moving_average(df, self.window, value = value)
-        buy_signal = df.apply(lambda row: row["SMA"] if row[value] > row["SMA"] else np.nan, axis=1).values
-        sell_signal = df.apply(lambda row: row["SMA"] if row[value] < row["SMA"] else np.nan, axis=1).values
+        df["SMA"] = tp.moving_average(df, self.window)
+        buy_signal = df.apply(lambda row: row["SMA"] if row["Close"] > row["SMA"] else np.nan, axis=1).values
+        sell_signal = df.apply(lambda row: row["SMA"] if row["Close"] < row["SMA"] else np.nan, axis=1).values
         return (buy_signal, sell_signal)
 
     def additional_plot_element(self, df, start_date, end_date):

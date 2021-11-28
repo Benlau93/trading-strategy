@@ -81,6 +81,9 @@ class BackTesting:
         else:
             df = self.download_price(ticker ,timeframe)
             # save latest downloaded price
+            if "Adj Close" in df.columns:
+                df["Close"] = df["Adj Close"]
+                df = df.drop("Adj Close", axis=1)
             self.historical[self.__unique] = df
 
         df = df.sort_values("Date").dropna()
@@ -185,9 +188,6 @@ class BackTesting:
         df_plot = self.historical[self.__unique]
         start_date, end_date = self.__unique.split("|")[2].split(" to ")
         df_plot = df_plot[(df_plot["Date"] >= pd.to_datetime(start_date)) & (df_plot["Date"] <= pd.to_datetime(end_date))].set_index("Date")
-        if "Adj Close" in df_plot.columns:
-            df_plot["Close"] = df_plot["Adj Close"]
-            df_plot = df_plot.drop("Adj Close", axis=1)
 
         signal_df = self.__transaction[self.__transaction["UNIQUE"]==self.__unique][["Date","Action","Price"]].set_index("Date")
         buy_plot = signal_df[signal_df["Action"]=="Buy"][["Price"]].copy()
@@ -224,9 +224,8 @@ class BackTesting:
 
     @staticmethod
     def buy_and_hold(df):
-        close = "Adj Close" if "Adj Close" in df.columns else "Close"
-        buy_price = df.head(1)[close].iloc[0]
-        cur_price = df.tail(1)[close].iloc[0]
+        buy_price = df.head(1)["Close"].iloc[0]
+        cur_price = df.tail(1)["Close"].iloc[0]
         pl = round(cur_price - buy_price, 2)
         pl_per = (cur_price - buy_price)/ buy_price
         return (pl, pl_per)

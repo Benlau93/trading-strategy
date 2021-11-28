@@ -16,13 +16,13 @@ def moving_average(price: pd.DataFrame, window:int, value="Close", type="simple"
         sma = price[value].rolling(window).mean()
         ema = price[value].copy()
         ema.iloc[0:window] = sma[0:window]
-        ma = ema.ewm(span = window, adjust=False).mean()
+        ma = ema.ewm(span = window, adjust=False).mean().values
     else:
         if type == "simple":
             weights = np.ones(window)
         elif type =="weighted":
             weights = np.arange(1, window+1)
-        ma = price[value].rolling(window).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+        ma = price[value].rolling(window).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True).values
 
     return ma
 
